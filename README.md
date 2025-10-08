@@ -1,6 +1,6 @@
-# Production ready(ish) MapReduce
+# MapReduce with features
 
-Cloud-native MapReduce proof of concept built with .NET 9 Web APIs. The solution exposes an API service that coordinates mapper and reducer workers communicating over HTTP and persisting artifacts in MinIO (S3-compatible object storage).
+Cloud-native MapReduce proof of concept
 
 ## Services
 
@@ -11,9 +11,8 @@ Cloud-native MapReduce proof of concept built with .NET 9 Web APIs. The solution
 
 ## Prerequisites
 
-- .NET 9 SDK (RC or later)
-- Docker and Kubernetes tooling (e.g., Docker Desktop with Kubernetes or kind/minikube)
-- `kubectl`
+- .NET 9 SDK
+- Docker and Kubernetes tooling
 
 ## Local Development
 
