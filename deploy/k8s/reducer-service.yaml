@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reducer-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: reducer-service
+  template:
+    metadata:
+      labels:
+        app: reducer-service
+    spec:
+      containers:
+        - name: reducer-service
+          image: mapreduce-reducer:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ASPNETCORE_URLS
+              value: http://+:8080
+            - name: Minio__Endpoint
+              value: minio
+            - name: Minio__Port
+              value: "9000"
+            - name: Minio__UseSsl
+              value: "false"
+            - name: Minio__AccessKey
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: accesskey
+            - name: Minio__SecretKey
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: secretkey
+            - name: Minio__BucketName
+              value: mapreduce
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: reducer-service
+spec:
+  selector:
+    app: reducer-service
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
