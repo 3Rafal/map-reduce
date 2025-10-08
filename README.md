@@ -93,3 +93,12 @@ docker build -t mapreduce-reducer:latest src/ReducerService
 - Add asynchronous orchestration via message queues.
 - Extend observability with OpenTelemetry and Prometheus metrics.
 - Harden authentication and authorization (e.g., JWT).
+
+## Scale-Out Ideas
+
+- Split orchestration from execution: move mapper/reducer triggers onto a queue (e.g., Kafka, RabbitMQ, Azure Service Bus) so multiple mapper/reducer replicas can pull work concurrently without busy
+   waiting.
+- Container autoscaling: add HPA rules in the K8s manifests (CPU/queue depth driven) and ensure stateless workers read config from env/ConfigMaps so Pods can scale horizontally.
+- Shared state & metadata: replace the in-memory job dictionary with a durable store (PostgreSQL, Redis) so you can run multiple API pods behind a load balancer without losing coordination data.
+- Sharding large jobs: extend the mapper to partition input files and fan out tasks; reducers can aggregate per-shard results using a combiner stage to avoid bottlenecks.
+- Back-pressure & retries: track job status in the DB/queue, implement idempotent mapper/reducer logic, and add retry policies and dead-letter queues for failing tasks.
