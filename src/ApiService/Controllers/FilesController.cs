@@ -48,7 +48,7 @@ public sealed class FilesController : ControllerBase
         var reference = new FileReference(_options.BucketName, objectKey);
         _logger.LogInformation("Uploaded file for job input: {ObjectKey}", objectKey);
 
-        return CreatedAtAction(nameof(UploadAsync), new { }, reference);
+        return Created("/files", reference);
     }
 
     private async Task EnsureBucketExistsAsync(CancellationToken cancellationToken)

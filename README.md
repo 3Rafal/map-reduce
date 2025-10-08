@@ -80,6 +80,14 @@ docker build -t mapreduce-reducer:latest src/ReducerService
    ```
 3. Access the API via the ingress at `http://localhost/api`.
 
+## Testing
+
+- Requires Docker daemon for MinIO.
+- Run end-to-end suite:
+  ```bash
+  dotnet test tests/EndToEndTests/EndToEndTests.csproj
+  ```
+
 ## Next Steps
 
 - Introduce persistent metadata storage (e.g., PostgreSQL) instead of the in-memory job registry.

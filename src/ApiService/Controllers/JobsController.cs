@@ -35,7 +35,7 @@ public sealed class JobsController : ControllerBase
         try
         {
             var job = await _jobCoordinator.CreateJobAsync(request.InputFile, cancellationToken);
-            return AcceptedAtAction(nameof(GetJobAsync), new { id = job.Id }, ToDto(job));
+            return AcceptedAtRoute("GetJob", new { id = job.Id }, ToDto(job));
         }
         catch (Exception ex)
         {
@@ -44,7 +44,7 @@ public sealed class JobsController : ControllerBase
         }
     }
 
-    [HttpGet("{id:guid}")]
+    [HttpGet("{id:guid}", Name = "GetJob")]
     [ProducesResponseType(typeof(JobSummaryDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     public IActionResult GetJobAsync(Guid id)
@@ -73,7 +73,7 @@ public sealed class JobsController : ControllerBase
             return Conflict(new ErrorResponse($"Job {id} has not completed yet."));
         }
 
-        await using var buffer = new MemoryStream();
+        var buffer = new MemoryStream();
         var getArgs = new GetObjectArgs()
             .WithBucket(job.BucketName)
             .WithObject(job.ResultObjectKey)
@@ -81,9 +81,10 @@ public sealed class JobsController : ControllerBase
 
         await _minioClient.GetObjectAsync(getArgs, cancellationToken);
         buffer.Position = 0;
+        var payload = buffer.ToArray();
 
         var fileName = $"job-{id:N}-result.json";
-        return File(buffer, MediaTypeNames.Application.Json, fileName);
+        return File(payload, MediaTypeNames.Application.Json, fileName);
     }
 
     [HttpPost("{id:guid}/mapdone")]

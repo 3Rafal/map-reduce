@@ -81,7 +81,7 @@ public sealed class WordCountReducer
             ResultObjectKey = request.OutputObjectKey
         };
 
-        var client = _httpClientFactory.CreateClient();
+        var client = _httpClientFactory.CreateClient("Callback");
         var response = await client.PostAsJsonAsync(request.CallbackUrl, notification, cancellationToken);
 
         if (!response.IsSuccessStatusCode)

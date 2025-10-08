@@ -85,7 +85,7 @@ public sealed class WordCountMapper
             IntermediateObjectKeys = new[] { request.IntermediateObjectKey }
         };
 
-        var client = _httpClientFactory.CreateClient();
+        var client = _httpClientFactory.CreateClient("Callback");
         var response = await client.PostAsJsonAsync(request.CallbackUrl, notification, cancellationToken);
 
         if (!response.IsSuccessStatusCode)
