@@ -23,36 +23,10 @@ builder.Services.AddOptions<CoordinatorOptions>()
     .ValidateDataAnnotations()
     .ValidateOnStart();
 
-var rabbitSection = builder.Configuration.GetSection("RabbitMq");
-
-builder.Services.AddMassTransit(x =>
+builder.Services.AddRabbitMqMassTransit(config =>
 {
-    x.AddConsumer<MapResultConsumer>();
-    x.AddConsumer<ReduceResultConsumer>();
-
-    x.UsingRabbitMq((context, cfg) =>
-    {
-        var hostName = rabbitSection["HostName"] ?? "localhost";
-        var port = rabbitSection.GetValue<int>("Port", 5672);
-        var virtualHost = rabbitSection["VirtualHost"] ?? "/";
-        var userName = rabbitSection["UserName"] ?? "guest";
-        var password = rabbitSection["Password"] ?? "guest";
-        var useSsl = rabbitSection.GetValue("UseSsl", false);
-
-        var hostUri = new UriBuilder("rabbitmq", hostName, port, virtualHost.TrimStart('/')).Uri;
-
-        cfg.Host(hostUri, h =>
-        {
-            h.Username(userName);
-            h.Password(password);
-            if (useSsl)
-            {
-                h.UseSsl();
-            }
-        });
-
-        cfg.ConfigureEndpoints(context);
-    });
+    config.AddConsumer<MapResultConsumer>();
+    config.AddConsumer<ReduceResultConsumer>();
 });
 
 builder.Services.AddMinioClient(builder.Configuration);
