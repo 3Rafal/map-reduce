@@ -31,21 +31,17 @@ public class MapResultConsumer : IConsumer<MapResultMessage>
             return;
         }
 
-        await _jobCoordinator.HandleMapCompletionAsync(
-            message.JobId,
-            message.IntermediateBucketName,
-            message.IntermediateObjectKey,
-            async (jobId, intermediateFiles) =>
+        if (_jobCoordinator.HandleMapCompletion(message.JobId, message.IntermediateObjectKey))
+        {
+            var reduceJob = new ReduceJobMessage
             {
-                var reduceJob = new ReduceJobMessage
-                {
-                    JobId = jobId,
-                    IntermediateObjectKeys = intermediateFiles,
-                    IntermediateBucketName = message.IntermediateBucketName
-                };
+                JobId = message.JobId,
+                IntermediateObjectKeys = new List<string> { message.IntermediateObjectKey },
+                IntermediateBucketName = message.IntermediateBucketName
+            };
 
-                await _queuePublisher.PublishReduceJobAsync(reduceJob);
-            });
+            await _queuePublisher.PublishReduceJobAsync(reduceJob);
+        }
     }
 }
 

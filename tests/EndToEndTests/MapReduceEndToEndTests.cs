@@ -55,20 +55,50 @@ public sealed class MapReduceEndToEndTests : IAsyncLifetime
         _reducerFactory = new ReducerServiceFactory(_minio, _rabbitMq);
         _apiFactory = new ApiServiceFactory(_minio, _rabbitMq, _mapperFactory, _reducerFactory);
 
-        // Initialize mapper and reducer servers
-        _mapperFactory.CreateClient();
-        _reducerFactory.CreateClient();
-
+        var mapperClient = _mapperFactory.CreateClient();
+        var reducerClient = _reducerFactory.CreateClient();
         _apiClient = _apiFactory.CreateClient(new WebApplicationFactoryClientOptions
         {
             BaseAddress = new Uri("http://localhost/")
         });
 
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        await WaitForServiceToBeReadyAsync(_apiClient, "ApiService", cts.Token);
+        await WaitForServiceToBeReadyAsync(mapperClient, "MapperService", cts.Token);
+        await WaitForServiceToBeReadyAsync(reducerClient, "ReducerService", cts.Token);
+
+
         // Ensure default headers mimic JSON clients
         _apiClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    }
 
-        // Give a brief moment for MassTransit consumers to start up
-        await Task.Delay(TimeSpan.FromSeconds(2));
+    private async Task WaitForServiceToBeReadyAsync(HttpClient client, string serviceName, CancellationToken cancellationToken)
+    {
+        var attempts = 0;
+        var maxAttempts = 20;
+        var delay = TimeSpan.FromMilliseconds(500);
+
+        while (attempts < maxAttempts)
+        {
+            try
+            {
+                var response = await client.GetAsync("/health", cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"{serviceName} is ready.");
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Attempt {attempts + 1} to connect to {serviceName} failed: {ex.Message}");
+            }
+
+            attempts++;
+            await Task.Delay(delay, cancellationToken);
+        }
+
+        throw new Exception($"{serviceName} did not become ready in the allotted time.");
     }
 
     public async Task DisposeAsync()

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using ApiService.Models;
-using Microsoft.Extensions.Options;
 using Shared.Models;
 
 namespace ApiService.Services;
@@ -54,38 +53,23 @@ public sealed class JobCoordinator
         return job;
     }
 
-    public async Task<bool> HandleMapCompletionAsync(
-        Guid jobId,
-        string intermediateBucketName,
-        string intermediateObjectKey,
-        Func<Guid, List<string>, Task> onMapCompleted)
-    {
-        if (!_jobs.TryGetValue(jobId, out var job))
+        public bool HandleMapCompletion(
+            Guid jobId,
+            string intermediateObjectKey)
         {
-            _logger.LogWarning("Received map completion for unknown job {JobId}", jobId);
-            return false;
-        }
-
-        job.IntermediateObjectKeys.Clear();
-        job.IntermediateObjectKeys.Add(intermediateObjectKey);
-        job.Status = JobStatus.Reducing;
-        job.UpdatedAt = DateTimeOffset.UtcNow;
-
-        try
-        {
-            await onMapCompleted(jobId, job.IntermediateObjectKeys);
+            if (!_jobs.TryGetValue(jobId, out var job))
+            {
+                _logger.LogWarning("Received map completion for unknown job {JobId}", jobId);
+                return false;
+            }
+    
+            job.IntermediateObjectKeys.Clear();
+            job.IntermediateObjectKeys.Add(intermediateObjectKey);
+            job.Status = JobStatus.Reducing;
+            job.UpdatedAt = DateTimeOffset.UtcNow;
+            _logger.LogInformation("Job {JobId} status updated to Reducing", jobId);
             return true;
         }
-        catch (Exception ex)
-        {
-            job.Status = JobStatus.Failed;
-            job.FailureReason = ex.Message;
-            job.UpdatedAt = DateTimeOffset.UtcNow;
-            _logger.LogError(ex, "Failed to start reducing for job {JobId}", job.Id);
-            return false;
-        }
-    }
-
     public void HandleMapFailureAsync(Guid jobId, string errorMessage)
     {
         if (!_jobs.TryGetValue(jobId, out var job))
