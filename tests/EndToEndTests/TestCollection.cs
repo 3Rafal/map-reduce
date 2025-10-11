@@ -7,3 +7,8 @@ namespace EndToEndTests;
 public sealed class EndToEndCollection : ICollectionFixture<MinioFixture>
 {
 }
+
+[CollectionDefinition("Kubernetes")]
+public sealed class KubernetesCollection : ICollectionFixture<KubernetesFixture>
+{
+}

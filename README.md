@@ -86,6 +86,10 @@ docker build -t mapreduce-reducer:latest src/ReducerService
   ```bash
   dotnet test tests/EndToEndTests/EndToEndTests.csproj
   ```
+- Run Kubernetes end-to-end (requires kubectl, active cluster, ingress/port-forward permissions):
+  ```bash
+  dotnet test tests/EndToEndTests/EndToEndTests.csproj --filter FullyQualifiedName~Kubernetes
+  ```
 
 ## Next Steps
 

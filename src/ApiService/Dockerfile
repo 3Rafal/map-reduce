@@ -9,9 +9,9 @@ COPY src/ApiService/ApiService.csproj src/ApiService/
 COPY src/MapperService/MapperService.csproj src/MapperService/
 COPY src/ReducerService/ReducerService.csproj src/ReducerService/
 COPY src/Shared/Shared.csproj src/Shared/
-RUN dotnet restore MapReduceSolution.sln
+RUN dotnet restore src/ApiService/ApiService.csproj
 
-COPY . .
+COPY src/ src/
 RUN dotnet publish src/ApiService/ApiService.csproj -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS final
