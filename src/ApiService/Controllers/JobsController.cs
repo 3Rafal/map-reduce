@@ -87,34 +87,6 @@ public sealed class JobsController : ControllerBase
         return File(payload, MediaTypeNames.Application.Json, fileName);
     }
 
-    [HttpPost("{id:guid}/mapdone")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> MapCompletedAsync(Guid id, [FromBody] MapCompletionNotification notification, CancellationToken cancellationToken)
-    {
-        if (notification is null || notification.JobId != id)
-        {
-            return BadRequest(new ErrorResponse("Job identifier mismatch in map completion payload."));
-        }
-
-        var handled = await _jobCoordinator.HandleMapCompletedAsync(notification, cancellationToken);
-        return handled ? Accepted() : NotFound(new ErrorResponse($"Job {id} was not found."));
-    }
-
-    [HttpPost("{id:guid}/reducedone")]
-    [ProducesResponseType(StatusCodes.Status202Accepted)]
-    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    public IActionResult ReduceCompleted(Guid id, [FromBody] ReduceCompletionNotification notification)
-    {
-        if (notification is null || notification.JobId != id)
-        {
-            return BadRequest(new ErrorResponse("Job identifier mismatch in reduce completion payload."));
-        }
-
-        var handled = _jobCoordinator.HandleReduceCompleted(notification);
-        return handled ? Accepted() : NotFound(new ErrorResponse($"Job {id} was not found."));
-    }
-
     private static JobSummaryDto ToDto(Job job) => new()
     {
         JobId = job.Id,

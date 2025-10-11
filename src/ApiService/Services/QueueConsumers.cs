@@ -1,0 +1,80 @@
+using MassTransit;
+using Shared.Models;
+
+namespace ApiService.Services;
+
+public class MapResultConsumer : IConsumer<MapResultMessage>
+{
+    private readonly JobCoordinator _jobCoordinator;
+    private readonly IQueuePublisher _queuePublisher;
+    private readonly ILogger<MapResultConsumer> _logger;
+
+    public MapResultConsumer(
+        JobCoordinator jobCoordinator,
+        IQueuePublisher queuePublisher,
+        ILogger<MapResultConsumer> logger)
+    {
+        _jobCoordinator = jobCoordinator;
+        _queuePublisher = queuePublisher;
+        _logger = logger;
+    }
+
+    public async Task Consume(ConsumeContext<MapResultMessage> context)
+    {
+        var message = context.Message;
+        _logger.LogInformation("Consuming map result for JobId: {JobId}, Success: {Success}",
+            message.JobId, message.Success);
+
+        if (!message.Success)
+        {
+            _jobCoordinator.HandleMapFailureAsync(message.JobId, message.ErrorMessage ?? "Unknown map error");
+            return;
+        }
+
+        await _jobCoordinator.HandleMapCompletionAsync(
+            message.JobId,
+            message.IntermediateBucketName,
+            message.IntermediateObjectKey,
+            async (jobId, intermediateFiles) =>
+            {
+                var reduceJob = new ReduceJobMessage
+                {
+                    JobId = jobId,
+                    IntermediateObjectKeys = intermediateFiles,
+                    IntermediateBucketName = message.IntermediateBucketName
+                };
+
+                await _queuePublisher.PublishReduceJobAsync(reduceJob);
+            });
+    }
+}
+
+public class ReduceResultConsumer : IConsumer<ReduceResultMessage>
+{
+    private readonly JobCoordinator _jobCoordinator;
+    private readonly ILogger<ReduceResultConsumer> _logger;
+
+    public ReduceResultConsumer(JobCoordinator jobCoordinator, ILogger<ReduceResultConsumer> logger)
+    {
+        _jobCoordinator = jobCoordinator;
+        _logger = logger;
+    }
+
+    public async Task Consume(ConsumeContext<ReduceResultMessage> context)
+    {
+        var message = context.Message;
+        _logger.LogInformation("Consuming reduce result for JobId: {JobId}, Success: {Success}",
+            message.JobId, message.Success);
+
+        if (!message.Success)
+        {
+            _jobCoordinator.HandleReduceFailureAsync(message.JobId, message.ErrorMessage ?? "Unknown reduce error");
+            return;
+        }
+
+        _jobCoordinator.HandleReduceCompletionAsync(
+            message.JobId,
+            message.ResultBucketName,
+            message.ResultObjectKey);
+    }
+}

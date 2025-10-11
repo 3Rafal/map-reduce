@@ -120,4 +120,21 @@ public sealed class WordCountMapper
             yield return sb.ToString();
         }
     }
+
+    public static Dictionary<string, int> ProcessContent(string content)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in Tokenize(content))
+        {
+            if (counts.TryGetValue(token, out var current))
+            {
+                counts[token] = current + 1;
+            }
+            else
+            {
+                counts[token] = 1;
+            }
+        }
+        return counts;
+    }
 }

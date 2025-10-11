@@ -13,6 +13,7 @@ namespace EndToEndTests.Factories;
 public sealed class ApiServiceFactory : WebApplicationFactory<ApiServiceAlias::Program>
 {
     private readonly MinioFixture _minio;
+    private readonly RabbitMqFixture _rabbitMq;
     private readonly MapperServiceFactory _mapperFactory;
     private readonly ReducerServiceFactory _reducerFactory;
 
@@ -20,9 +21,10 @@ public sealed class ApiServiceFactory : WebApplicationFactory<ApiServiceAlias::P
 
     private Uri ReducerServerBaseAddress => _reducerFactory.Server.BaseAddress;
 
-    public ApiServiceFactory(MinioFixture minio, MapperServiceFactory mapperFactory, ReducerServiceFactory reducerFactory)
+    public ApiServiceFactory(MinioFixture minio, RabbitMqFixture rabbitMq, MapperServiceFactory mapperFactory, ReducerServiceFactory reducerFactory)
     {
         _minio = minio;
+        _rabbitMq = rabbitMq;
         _mapperFactory = mapperFactory;
         _reducerFactory = reducerFactory;
     }
@@ -43,7 +45,13 @@ public sealed class ApiServiceFactory : WebApplicationFactory<ApiServiceAlias::P
                 ["Minio:BucketName"] = _minio.BucketName,
                 ["Coordinator:MapperBaseUrl"] = MapperServerBaseAddress.ToString(),
                 ["Coordinator:ReducerBaseUrl"] = ReducerServerBaseAddress.ToString(),
-                ["Coordinator:CallbackBaseUrl"] = "http://localhost/"
+                ["Coordinator:CallbackBaseUrl"] = "http://localhost/",
+                ["RabbitMq:HostName"] = _rabbitMq.HostName,
+                ["RabbitMq:Port"] = _rabbitMq.Port.ToString(),
+                ["RabbitMq:UserName"] = _rabbitMq.UserName,
+                ["RabbitMq:Password"] = _rabbitMq.Password,
+                ["RabbitMq:VirtualHost"] = _rabbitMq.VirtualHost,
+                ["RabbitMq:UseSsl"] = "false"
             };
 
             config.AddInMemoryCollection(overrides);
@@ -51,13 +59,7 @@ public sealed class ApiServiceFactory : WebApplicationFactory<ApiServiceAlias::P
 
         builder.ConfigureServices(services =>
         {
-            services.AddHttpClient("Mapper")
-                .ConfigureHttpClient(client => client.BaseAddress = MapperServerBaseAddress)
-                .ConfigurePrimaryHttpMessageHandler(() => _mapperFactory.Server.CreateHandler());
-
-            services.AddHttpClient("Reducer")
-                .ConfigureHttpClient(client => client.BaseAddress = ReducerServerBaseAddress)
-                .ConfigurePrimaryHttpMessageHandler(() => _reducerFactory.Server.CreateHandler());
+            // Remove HTTP clients as we now use queues instead of direct HTTP calls
         });
     }
 }

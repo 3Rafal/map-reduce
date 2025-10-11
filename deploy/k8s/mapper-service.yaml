@@ -37,6 +37,18 @@ spec:
                   key: secretkey
             - name: Minio__BucketName
               value: mapreduce
+            - name: RabbitMq__HostName
+              value: rabbitmq
+            - name: RabbitMq__Port
+              value: "5672"
+            - name: RabbitMq__UserName
+              value: "guest"
+            - name: RabbitMq__Password
+              value: "guest"
+            - name: RabbitMq__VirtualHost
+              value: "/"
+            - name: RabbitMq__UseSsl
+              value: "false"
           ports:
             - containerPort: 8080
           readinessProbe:

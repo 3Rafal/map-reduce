@@ -11,16 +11,12 @@ namespace EndToEndTests.Factories;
 public sealed class MapperServiceFactory : WebApplicationFactory<MapperServiceAlias::Program>
 {
     private readonly MinioFixture _minio;
-    private Func<HttpMessageHandler>? _callbackHandlerFactory;
+    private readonly RabbitMqFixture _rabbitMq;
 
-    public MapperServiceFactory(MinioFixture minio)
+    public MapperServiceFactory(MinioFixture minio, RabbitMqFixture rabbitMq)
     {
         _minio = minio;
-    }
-
-    public void UseCallbackHandler(Func<HttpMessageHandler> handlerFactory)
-    {
-        _callbackHandlerFactory = handlerFactory;
+        _rabbitMq = rabbitMq;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -36,7 +32,13 @@ public sealed class MapperServiceFactory : WebApplicationFactory<MapperServiceAl
                 ["Minio:UseSsl"] = "false",
                 ["Minio:AccessKey"] = _minio.AccessKey,
                 ["Minio:SecretKey"] = _minio.SecretKey,
-                ["Minio:BucketName"] = _minio.BucketName
+                ["Minio:BucketName"] = _minio.BucketName,
+                ["RabbitMq:HostName"] = _rabbitMq.HostName,
+                ["RabbitMq:Port"] = _rabbitMq.Port.ToString(),
+                ["RabbitMq:UserName"] = _rabbitMq.UserName,
+                ["RabbitMq:Password"] = _rabbitMq.Password,
+                ["RabbitMq:VirtualHost"] = _rabbitMq.VirtualHost,
+                ["RabbitMq:UseSsl"] = "false"
             };
 
             config.AddInMemoryCollection(overrides);
@@ -44,11 +46,7 @@ public sealed class MapperServiceFactory : WebApplicationFactory<MapperServiceAl
 
         builder.ConfigureServices(services =>
         {
-            if (_callbackHandlerFactory is not null)
-            {
-                services.AddHttpClient("Callback")
-                    .ConfigurePrimaryHttpMessageHandler(_ => _callbackHandlerFactory!());
-            }
+            // Remove callback HTTP client as we now use queues instead of HTTP callbacks
         });
     }
 }

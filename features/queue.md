@@ -5,8 +5,7 @@
       - map-results queue: mapper publishes completion events.
       - reduce-jobs queue: API publishes reduce requests when all maps finish.
       - reduce-results queue: reducer publishes final completions.
-  - Publish from the API – when /jobs receives a request, persist the job state in a database, then enqueue a map message instead of calling mapper HTTP directly. Use an async client (e.g.
-    Confluent.Kafka, MassTransit with RabbitMQ) registered via DI.
+  - Publish from the API – when /jobs receives a request, persist the job state in a database, then enqueue a map message instead of calling mapper HTTP directly. Use an async client (MassTransit with RabbitMQ) registered via DI.
   - Consume in workers – mapper and reducer services run background consumers (hosted services). The consumer pulls messages, processes them, and publishes results back to the appropriate queue. Keep
     their WebAPI surface only for health/diagnostics.
   - Handle acknowledgments & retries – configure the broker’s ack/retry/dead-letter features. Deserialize message payloads using a stable schema (Protobuf or JSON with versioning). Make mapper/reducer

@@ -13,6 +13,7 @@ Cloud-native MapReduce proof of concept
 
 - .NET 9 SDK
 - Docker and Kubernetes tooling
+- RabbitMQ (for local development)
 
 ## Local Development
 
@@ -22,12 +23,19 @@ Cloud-native MapReduce proof of concept
    dotnet build MapReduceSolution.sln
    ```
 
-2. **Run MinIO locally**
+2. **Run dependencies locally**
    ```bash
+   # Start MinIO
    docker run -p 9000:9000 -p 9001:9001 \
      -e MINIO_ROOT_USER=minioadmin \
      -e MINIO_ROOT_PASSWORD=minioadmin \
      minio/minio server /data --console-address :9001
+
+   # Start RabbitMQ
+   docker run -p 5672:5672 -p 15672:15672 \
+     -e RABBITMQ_DEFAULT_USER=guest \
+     -e RABBITMQ_DEFAULT_PASS=guest \
+     rabbitmq:3.13-management
    ```
 
 3. **Run the services (separate shells)**
@@ -37,7 +45,7 @@ Cloud-native MapReduce proof of concept
    dotnet run --project src/ReducerService --urls http://localhost:5082
    ```
 
-   Adjust the coordinator URLs in `src/ApiService/appsettings.json` if you change ports.
+   All services now communicate via RabbitMQ queues instead of HTTP callbacks.
 
 4. **Execute the vertical slice**
    ```bash
@@ -69,15 +77,17 @@ docker build -t mapreduce-reducer:latest src/ReducerService
 ## Kubernetes Deployment
 
 1. Build/push the images to a registry accessible by your cluster (or use `imagePullPolicy: Never` with local clusters).
-2. Apply manifests:
+2. Apply manifests in order:
    ```bash
    kubectl apply -f deploy/k8s/minio.yaml
+   kubectl apply -f deploy/k8s/rabbitmq.yaml
    kubectl apply -f deploy/k8s/mapper-service.yaml
    kubectl apply -f deploy/k8s/reducer-service.yaml
    kubectl apply -f deploy/k8s/api-service.yaml
    kubectl apply -f deploy/k8s/ingress.yaml
    ```
 3. Access the API via the ingress at `http://localhost/api`.
+4. RabbitMQ management UI is available at `http://localhost:15672` (username/password: guest/guest).
 
 ## Testing
 
@@ -91,18 +101,33 @@ docker build -t mapreduce-reducer:latest src/ReducerService
   dotnet test tests/EndToEndTests/EndToEndTests.csproj --filter FullyQualifiedName~Kubernetes
   ```
 
+## Queue-Based Architecture
+
+This implementation now uses RabbitMQ for asynchronous communication between services:
+
+- **Queue flows**:
+  - API publishes `MapJobMessage` to `map-jobs` queue
+  - Mapper consumes map jobs, processes files, publishes `MapResultMessage` to `map-results` queue
+  - API consumes map results, publishes `ReduceJobMessage` to `reduce-jobs` queue
+  - Reducer consumes reduce jobs, aggregates results, publishes `ReduceResultMessage` to `reduce-results` queue
+  - API consumes final results and updates job status
+
+- **Benefits**:
+  - Decoupled services - no direct HTTP dependencies
+  - Better resilience - queues buffer requests
+  - Scalability - multiple mapper/reducer instances can process jobs concurrently
+  - Retry and error handling through MassTransit
+
 ## Next Steps
 
 - Introduce persistent metadata storage (e.g., PostgreSQL) instead of the in-memory job registry.
-- Add asynchronous orchestration via message queues.
 - Extend observability with OpenTelemetry and Prometheus metrics.
 - Harden authentication and authorization (e.g., JWT).
+- Configure MassTransit retry policies and dead-letter queues for better error handling.
 
 ## Scale-Out Ideas
 
-- Split orchestration from execution: move mapper/reducer triggers onto a queue (e.g., Kafka, RabbitMQ, Azure Service Bus) so multiple mapper/reducer replicas can pull work concurrently without busy
-   waiting.
 - Container autoscaling: add HPA rules in the K8s manifests (CPU/queue depth driven) and ensure stateless workers read config from env/ConfigMaps so Pods can scale horizontally.
 - Shared state & metadata: replace the in-memory job dictionary with a durable store (PostgreSQL, Redis) so you can run multiple API pods behind a load balancer without losing coordination data.
 - Sharding large jobs: extend the mapper to partition input files and fan out tasks; reducers can aggregate per-shard results using a combiner stage to avoid bottlenecks.
-- Back-pressure & retries: track job status in the DB/queue, implement idempotent mapper/reducer logic, and add retry policies and dead-letter queues for failing tasks.
+- Back-pressure & retries: configure MassTransit retry policies, circuit breakers, and dead-letter queues for failing tasks.

@@ -23,24 +23,37 @@ public sealed class MapReduceEndToEndTests : IAsyncLifetime
     };
 
     private readonly MinioFixture _minio;
+    private RabbitMqFixture? _rabbitMq;
     private MapperServiceFactory? _mapperFactory;
     private ReducerServiceFactory? _reducerFactory;
     private ApiServiceFactory? _apiFactory;
     private HttpClient? _apiClient;
+    private bool _skip;
+    private string? _skipReason;
 
     public MapReduceEndToEndTests(MinioFixture minio)
     {
         _minio = minio;
     }
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
-        _mapperFactory = new MapperServiceFactory(_minio);
-        _reducerFactory = new ReducerServiceFactory(_minio);
-        _apiFactory = new ApiServiceFactory(_minio, _mapperFactory, _reducerFactory);
+        var rabbitMq = new RabbitMqFixture();
+        await rabbitMq.InitializeAsync();
 
-        _mapperFactory.UseCallbackHandler(() => _apiFactory.Server.CreateHandler());
-        _reducerFactory.UseCallbackHandler(() => _apiFactory.Server.CreateHandler());
+        if (!rabbitMq.IsReady)
+        {
+            _skip = true;
+            _skipReason = rabbitMq.SkipReason ?? "RabbitMQ fixture failed to start.";
+            await rabbitMq.DisposeAsync();
+            return;
+        }
+
+        _rabbitMq = rabbitMq;
+
+        _mapperFactory = new MapperServiceFactory(_minio, _rabbitMq);
+        _reducerFactory = new ReducerServiceFactory(_minio, _rabbitMq);
+        _apiFactory = new ApiServiceFactory(_minio, _rabbitMq, _mapperFactory, _reducerFactory);
 
         // Initialize mapper and reducer servers
         _mapperFactory.CreateClient();
@@ -53,21 +66,28 @@ public sealed class MapReduceEndToEndTests : IAsyncLifetime
 
         // Ensure default headers mimic JSON clients
         _apiClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-        return Task.CompletedTask;
+
+        // Give a brief moment for MassTransit consumers to start up
+        await Task.Delay(TimeSpan.FromSeconds(2));
     }
 
-    public Task DisposeAsync()
+    public async Task DisposeAsync()
     {
         _apiClient?.Dispose();
         _apiFactory?.Dispose();
         _mapperFactory?.Dispose();
         _reducerFactory?.Dispose();
-        return Task.CompletedTask;
+        if (_rabbitMq is not null)
+        {
+            await _rabbitMq.DisposeAsync();
+        }
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task WordCountPipeline_CompletesAndAggregates()
     {
+        Skip.If(_skip, _skipReason ?? "RabbitMQ fixture not ready.");
+
         var seedText = "Hello world hello map reduce map";
         var multipart = new MultipartFormDataContent
         {
@@ -94,18 +114,34 @@ public sealed class MapReduceEndToEndTests : IAsyncLifetime
 
         JobSummaryDto? current;
         var attempts = 0;
+        var maxAttempts = 120; // Increase max attempts for queue processing
+        var delay = TimeSpan.FromMilliseconds(500); // Slightly longer delay
+
         do
         {
-            await Task.Delay(TimeSpan.FromMilliseconds(250));
+            await Task.Delay(delay);
             var statusResponse = await _apiClient.GetAsync($"/jobs/{jobSummary.JobId}");
             statusResponse.EnsureSuccessStatusCode();
             current = await statusResponse.Content.ReadFromJsonAsync<JobSummaryDto>(SerializerOptions);
+
+            // Log status for debugging
+            if (attempts % 10 == 0)
+            {
+                Console.WriteLine($"Attempt {attempts}: Job status = {current?.Status}");
+            }
+
             attempts++;
         }
-        while (current is not { Status: JobStatus.Completed } && attempts < 40);
+        while (current is not { Status: JobStatus.Completed or JobStatus.Failed } && attempts < maxAttempts);
 
         Assert.NotNull(current);
-        Assert.Equal(JobStatus.Completed, current!.Status);
+
+        if (current!.Status == JobStatus.Failed)
+        {
+            Assert.Fail($"Job failed: {current.FailureReason}");
+        }
+
+        Assert.Equal(JobStatus.Completed, current.Status);
         Assert.False(string.IsNullOrWhiteSpace(current.ResultObjectKey));
 
         var resultResponse = await _apiClient.GetAsync($"/jobs/{current.JobId}/result");
