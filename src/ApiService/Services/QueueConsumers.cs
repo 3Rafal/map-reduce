@@ -22,8 +22,8 @@ public class MapResultConsumer : IConsumer<MapResultMessage>
     public async Task Consume(ConsumeContext<MapResultMessage> context)
     {
         var message = context.Message;
-        _logger.LogInformation("Consuming map result for JobId: {JobId}, Success: {Success}",
-            message.JobId, message.Success);
+        _logger.LogInformation("Consuming map result for JobId: {JobId}, Success: {Success}, Key: {Key}",
+            message.JobId, message.Success, message.IntermediateObjectKey);
 
         if (!message.Success)
         {
@@ -31,17 +31,7 @@ public class MapResultConsumer : IConsumer<MapResultMessage>
             return;
         }
 
-        if (_jobCoordinator.HandleMapCompletion(message.JobId, message.IntermediateObjectKey))
-        {
-            var reduceJob = new ReduceJobMessage
-            {
-                JobId = message.JobId,
-                IntermediateObjectKeys = new List<string> { message.IntermediateObjectKey },
-                IntermediateBucketName = message.IntermediateBucketName
-            };
-
-            await _queuePublisher.PublishReduceJobAsync(reduceJob);
-        }
+        await _jobCoordinator.HandleMapCompletionAsync(message.JobId, message.IntermediateObjectKey, context.CancellationToken);
     }
 }
 
@@ -56,7 +46,7 @@ public class ReduceResultConsumer : IConsumer<ReduceResultMessage>
         _logger = logger;
     }
 
-    public async Task Consume(ConsumeContext<ReduceResultMessage> context)
+    public Task Consume(ConsumeContext<ReduceResultMessage> context)
     {
         var message = context.Message;
         _logger.LogInformation("Consuming reduce result for JobId: {JobId}, Success: {Success}",
@@ -64,13 +54,13 @@ public class ReduceResultConsumer : IConsumer<ReduceResultMessage>
 
         if (!message.Success)
         {
-            _jobCoordinator.HandleReduceFailureAsync(message.JobId, message.ErrorMessage ?? "Unknown reduce error");
-            return;
+            _jobCoordinator.HandleReduceFailure(message.JobId, message.ErrorMessage ?? "Unknown reduce error");
+            return Task.CompletedTask;
         }
 
-        _jobCoordinator.HandleReduceCompletionAsync(
+        _jobCoordinator.HandleReduceCompletion(
             message.JobId,
-            message.ResultBucketName,
             message.ResultObjectKey);
+        return Task.CompletedTask;
     }
 }

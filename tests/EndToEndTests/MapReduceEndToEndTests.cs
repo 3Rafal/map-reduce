@@ -1,189 +1,59 @@
-extern alias ApiServiceAlias;
-
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
-using EndToEndTests.Factories;
 using EndToEndTests.Fixtures;
-using Shared.Models;
-using Xunit;
-using Microsoft.AspNetCore.Mvc.Testing;
-using ApiFileReference = ApiServiceAlias::ApiService.Models.FileReference;
-using ApiCreateJobRequest = ApiServiceAlias::ApiService.Models.CreateJobRequest;
 
 namespace EndToEndTests;
 
-[Collection("EndToEnd")]
-public sealed class MapReduceEndToEndTests : IAsyncLifetime
+public sealed class MapReduceEndToEndTests : BaseMapReduceTest
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new()
+    public MapReduceEndToEndTests(MinioFixture minio) : base(minio)
     {
-        PropertyNameCaseInsensitive = true
-    };
-
-    private readonly MinioFixture _minio;
-    private RabbitMqFixture? _rabbitMq;
-    private MapperServiceFactory? _mapperFactory;
-    private ReducerServiceFactory? _reducerFactory;
-    private ApiServiceFactory? _apiFactory;
-    private HttpClient? _apiClient;
-    private bool _skip;
-    private string? _skipReason;
-
-    public MapReduceEndToEndTests(MinioFixture minio)
-    {
-        _minio = minio;
-    }
-
-    public async Task InitializeAsync()
-    {
-        var rabbitMq = new RabbitMqFixture();
-        await rabbitMq.InitializeAsync();
-
-        if (!rabbitMq.IsReady)
-        {
-            _skip = true;
-            _skipReason = rabbitMq.SkipReason ?? "RabbitMQ fixture failed to start.";
-            await rabbitMq.DisposeAsync();
-            return;
-        }
-
-        _rabbitMq = rabbitMq;
-
-        _mapperFactory = new MapperServiceFactory(_minio, _rabbitMq);
-        _reducerFactory = new ReducerServiceFactory(_minio, _rabbitMq);
-        _apiFactory = new ApiServiceFactory(_minio, _rabbitMq, _mapperFactory, _reducerFactory);
-
-        var mapperClient = _mapperFactory.CreateClient();
-        var reducerClient = _reducerFactory.CreateClient();
-        _apiClient = _apiFactory.CreateClient(new WebApplicationFactoryClientOptions
-        {
-            BaseAddress = new Uri("http://localhost/")
-        });
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await WaitForServiceToBeReadyAsync(_apiClient, "ApiService", cts.Token);
-        await WaitForServiceToBeReadyAsync(mapperClient, "MapperService", cts.Token);
-        await WaitForServiceToBeReadyAsync(reducerClient, "ReducerService", cts.Token);
-
-
-        // Ensure default headers mimic JSON clients
-        _apiClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-    }
-
-    private async Task WaitForServiceToBeReadyAsync(HttpClient client, string serviceName, CancellationToken cancellationToken)
-    {
-        var attempts = 0;
-        var maxAttempts = 20;
-        var delay = TimeSpan.FromMilliseconds(500);
-
-        while (attempts < maxAttempts)
-        {
-            try
-            {
-                var response = await client.GetAsync("/health", cancellationToken);
-                if (response.IsSuccessStatusCode)
-                {
-                    Console.WriteLine($"{serviceName} is ready.");
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Attempt {attempts + 1} to connect to {serviceName} failed: {ex.Message}");
-            }
-
-            attempts++;
-            await Task.Delay(delay, cancellationToken);
-        }
-
-        throw new Exception($"{serviceName} did not become ready in the allotted time.");
-    }
-
-    public async Task DisposeAsync()
-    {
-        _apiClient?.Dispose();
-        _apiFactory?.Dispose();
-        _mapperFactory?.Dispose();
-        _reducerFactory?.Dispose();
-        if (_rabbitMq is not null)
-        {
-            await _rabbitMq.DisposeAsync();
-        }
     }
 
     [SkippableFact]
     public async Task WordCountPipeline_CompletesAndAggregates()
     {
-        Skip.If(_skip, _skipReason ?? "RabbitMQ fixture not ready.");
-
         var seedText = "Hello world hello map reduce map";
-        var multipart = new MultipartFormDataContent
-        {
-            { new ByteArrayContent(Encoding.UTF8.GetBytes(seedText)) { Headers = { ContentType = new MediaTypeHeaderValue("text/plain") } }, "file", "sample.txt" }
-        };
 
-        var uploadResponse = await _apiClient!.PostAsync("/files", multipart);
-        var uploadBody = await uploadResponse.Content.ReadAsStringAsync();
-        Assert.True(uploadResponse.IsSuccessStatusCode, $"Upload failed: {uploadResponse.StatusCode} {uploadBody}");
-        var uploadedReference = await uploadResponse.Content.ReadFromJsonAsync<ApiFileReference>(SerializerOptions);
-        Assert.NotNull(uploadedReference);
+        var counts = await RunMapReduceWorkflowAsync(seedText, "sample.txt");
 
-        var createRequest = new ApiCreateJobRequest
-        {
-            InputFile = uploadedReference
-        };
-
-        var submitResponse = await _apiClient.PostAsJsonAsync("/jobs", createRequest, SerializerOptions);
-        var submitBody = await submitResponse.Content.ReadAsStringAsync();
-        Assert.True(submitResponse.IsSuccessStatusCode, $"Job submission failed: {submitResponse.StatusCode} {submitBody}");
-        var jobSummary = await submitResponse.Content.ReadFromJsonAsync<JobSummaryDto>(SerializerOptions);
-        Assert.NotNull(jobSummary);
-        Assert.NotEqual(JobStatus.Failed, jobSummary!.Status);
-
-        JobSummaryDto? current;
-        var attempts = 0;
-        var maxAttempts = 120; // Increase max attempts for queue processing
-        var delay = TimeSpan.FromMilliseconds(500); // Slightly longer delay
-
-        do
-        {
-            await Task.Delay(delay);
-            var statusResponse = await _apiClient.GetAsync($"/jobs/{jobSummary.JobId}");
-            statusResponse.EnsureSuccessStatusCode();
-            current = await statusResponse.Content.ReadFromJsonAsync<JobSummaryDto>(SerializerOptions);
-
-            // Log status for debugging
-            if (attempts % 10 == 0)
-            {
-                Console.WriteLine($"Attempt {attempts}: Job status = {current?.Status}");
-            }
-
-            attempts++;
-        }
-        while (current is not { Status: JobStatus.Completed or JobStatus.Failed } && attempts < maxAttempts);
-
-        Assert.NotNull(current);
-
-        if (current!.Status == JobStatus.Failed)
-        {
-            Assert.Fail($"Job failed: {current.FailureReason}");
-        }
-
-        Assert.Equal(JobStatus.Completed, current.Status);
-        Assert.False(string.IsNullOrWhiteSpace(current.ResultObjectKey));
-
-        var resultResponse = await _apiClient.GetAsync($"/jobs/{current.JobId}/result");
-        var resultBody = await resultResponse.Content.ReadAsStringAsync();
-        Assert.True(resultResponse.IsSuccessStatusCode, $"Result retrieval failed: {resultResponse.StatusCode} {resultBody}");
-        var resultJson = await resultResponse.Content.ReadAsStringAsync();
-        var counts = JsonSerializer.Deserialize<Dictionary<string, int>>(resultJson, SerializerOptions);
-        Assert.NotNull(counts);
-
-        Assert.Equal(2, counts!["hello"]);
+        Assert.Equal(2, counts["hello"]);
         Assert.Equal(1, counts["world"]);
         Assert.Equal(2, counts["map"]);
         Assert.Equal(1, counts["reduce"]);
+    }
+
+    [SkippableFact]
+    public async Task CanProcessLargeFileWithChunking_EndToEnd()
+    {
+        var sherlockTextPath = Path.Combine(Directory.GetCurrentDirectory(), "sherlock_holmes.txt");
+        Assert.True(File.Exists(sherlockTextPath), $"Test file not found: {sherlockTextPath}");
+
+        var sherlockText = await File.ReadAllTextAsync(sherlockTextPath);
+        Assert.False(string.IsNullOrEmpty(sherlockText), "Test file is empty");
+
+        var uploadedReference = await UploadFileAsync(sherlockText, "sherlock_holmes.txt");
+
+        var jobSummary = await SubmitJobAsync(uploadedReference);
+
+        var finalStatus = await WaitForJobCompletionAsync(
+            jobSummary.JobId,
+            maxAttempts: 300,
+            delay: TimeSpan.FromSeconds(1));
+
+        Assert.True(finalStatus.MapTasksTotal > 1, $"Expected multiple map tasks, but got {finalStatus.MapTasksTotal}");
+        Assert.Equal(finalStatus.MapTasksTotal, finalStatus.MapTasksCompleted);
+
+        var counts = await GetJobResultAsync(finalStatus.JobId);
+
+        var totalWords = counts.Values.Sum();
+        Console.WriteLine($"Total words counted: {totalWords}");
+
+        Assert.Equal(108087, totalWords);
+
+        Assert.True(counts.ContainsKey("the"));
+        Assert.True(counts.ContainsKey("holmes"));
+        Assert.True(counts.ContainsKey("sherlock"));
+        Assert.True(counts.ContainsKey("watson"));
+
+        Console.WriteLine($"Chunking test passed: {finalStatus.MapTasksTotal} chunks processed, {totalWords} total words counted");
     }
 }

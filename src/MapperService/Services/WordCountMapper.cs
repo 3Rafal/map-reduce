@@ -82,7 +82,7 @@ public sealed class WordCountMapper
         var notification = new MapCompletionNotification
         {
             JobId = request.JobId,
-            IntermediateObjectKeys = new[] { request.IntermediateObjectKey }
+            IntermediateObjectKeys = [request.IntermediateObjectKey]
         };
 
         var client = _httpClientFactory.CreateClient("Callback");
@@ -104,7 +104,7 @@ public sealed class WordCountMapper
 
         foreach (var ch in text)
         {
-            if (char.IsLetterOrDigit(ch))
+            if (char.IsLetterOrDigit(ch) || ch == '\'' || ch == '-')
             {
                 sb.Append(char.ToLowerInvariant(ch));
             }

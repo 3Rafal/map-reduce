@@ -9,6 +9,8 @@ public record MapJobMessage
     public string InputBucketName { get; init; } = string.Empty;
     [Required]
     public string InputObjectKey { get; init; } = string.Empty;
+    public long Offset { get; init; } = 0;
+    public int Count { get; init; } = -1;
     public Dictionary<string, string> Options { get; init; } = new();
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 }

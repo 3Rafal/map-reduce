@@ -96,6 +96,8 @@ public sealed class JobsController : ControllerBase
         IntermediateObjectKeys = job.IntermediateObjectKeys.ToArray(),
         ResultObjectKey = job.ResultObjectKey,
         FailureReason = job.FailureReason,
+        MapTasksTotal = job.MapTasksTotal,
+        MapTasksCompleted = job.MapTasksCompleted,
         CreatedAt = job.CreatedAt,
         UpdatedAt = job.UpdatedAt
     };

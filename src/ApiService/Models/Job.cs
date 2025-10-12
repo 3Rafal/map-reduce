@@ -18,6 +18,17 @@ public sealed class Job
 
     public string? FailureReason { get; set; }
 
+    public int MapTasksTotal { get; set; }
+
+    private int _mapTasksCompleted;
+
+    public int MapTasksCompleted => _mapTasksCompleted;
+
+    public int IncrementMapTasksCompleted()
+    {
+        return Interlocked.Increment(ref _mapTasksCompleted);
+    }
+
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;
 
     public DateTimeOffset? UpdatedAt { get; set; }

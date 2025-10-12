@@ -77,6 +77,10 @@ public sealed record JobSummaryDto
 
     public string? FailureReason { get; init; }
 
+    public int MapTasksTotal { get; init; }
+
+    public int MapTasksCompleted { get; init; }
+
     public DateTimeOffset CreatedAt { get; init; }
 
     public DateTimeOffset? UpdatedAt { get; init; }
