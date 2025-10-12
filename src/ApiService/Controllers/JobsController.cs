@@ -97,7 +97,7 @@ public sealed class JobsController : ControllerBase
                         }
                     });
 
-                await _minioClient.GetObjectAsync(getArgs);
+                await _minioClient.GetObjectAsync(getArgs, cancellationToken);
                 await pipe.Writer.CompleteAsync();
             }
             catch (Exception ex)
@@ -105,7 +105,7 @@ public sealed class JobsController : ControllerBase
                 _logger.LogError(ex, "Failed to stream result for job {JobId}", id);
                 await pipe.Writer.CompleteAsync(ex);
             }
-        }, cancellationToken);
+        });
 
         return new FileStreamResult(pipe.Reader.AsStream(), MediaTypeNames.Application.Json)
         {
