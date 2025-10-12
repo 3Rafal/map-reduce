@@ -1,4 +1,3 @@
-using MassTransit;
 using MapperService.Services;
 using Shared.Utils;
 
@@ -23,8 +22,6 @@ builder.Services.AddRabbitMqMassTransit(config =>
 });
 
 builder.Services.AddMinioClient(builder.Configuration);
-builder.Services.AddHttpClient("Callback");
-builder.Services.AddScoped<WordCountMapper>();
 
 var app = builder.Build();
 

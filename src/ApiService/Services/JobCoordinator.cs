@@ -23,8 +23,6 @@ public sealed class JobCoordinator
         _minioClient = minioClient;
     }
 
-    public IEnumerable<Job> GetJobs() => _jobs.Values;
-
     public bool TryGetJob(Guid jobId, out Job? job) => _jobs.TryGetValue(jobId, out job);
 
     public async Task<Job> CreateJobAsync(FileReference fileReference, CancellationToken cancellationToken)

@@ -23,8 +23,6 @@ builder.Services.AddRabbitMqMassTransit(config =>
 });
 
 builder.Services.AddMinioClient(builder.Configuration);
-builder.Services.AddHttpClient("Callback");
-builder.Services.AddScoped<WordCountReducer>();
 
 var app = builder.Build();
 

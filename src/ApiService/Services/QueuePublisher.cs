@@ -5,8 +5,8 @@ namespace ApiService.Services;
 
 public interface IQueuePublisher
 {
-    Task PublishMapJobAsync(MapJobMessage message, CancellationToken cancellationToken = default);
-    Task PublishReduceJobAsync(ReduceJobMessage message, CancellationToken cancellationToken = default);
+    Task PublishMapJobAsync(MapJobMessage message, CancellationToken cancellationToken);
+    Task PublishReduceJobAsync(ReduceJobMessage message, CancellationToken cancellationToken);
 }
 
 public class QueuePublisher : IQueuePublisher
@@ -20,13 +20,13 @@ public class QueuePublisher : IQueuePublisher
         _logger = logger;
     }
 
-    public async Task PublishMapJobAsync(MapJobMessage message, CancellationToken cancellationToken = default)
+    public async Task PublishMapJobAsync(MapJobMessage message, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Publishing map job for JobId: {JobId}", message.JobId);
         await _bus.Publish(message, cancellationToken);
     }
 
-    public async Task PublishReduceJobAsync(ReduceJobMessage message, CancellationToken cancellationToken = default)
+    public async Task PublishReduceJobAsync(ReduceJobMessage message, CancellationToken cancellationToken)
     {
         _logger.LogInformation("Publishing reduce job for JobId: {JobId}", message.JobId);
         await _bus.Publish(message, cancellationToken);

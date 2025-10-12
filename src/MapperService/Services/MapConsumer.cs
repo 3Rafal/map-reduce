@@ -1,9 +1,8 @@
 using MassTransit;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Minio;
 using Shared.Models;
-using Shared.Utils;
+using System.Text;
 using System.Text.Json;
 
 namespace MapperService.Services;
@@ -41,7 +40,7 @@ public class MapConsumer : IConsumer<MapJobMessage>
             var content = await ReadChunkWithBoundariesAsync(message, context.CancellationToken);
 
             // Perform word counting on chunk content
-            var wordCounts = WordCountMapper.ProcessContent(content);
+            var wordCounts = ProcessContent(content);
 
             // Write intermediate result to MinIO
             var intermediateJson = JsonSerializer.Serialize(wordCounts);
@@ -153,6 +152,46 @@ public class MapConsumer : IConsumer<MapJobMessage>
         }
 
         // Return the substring that this chunk is responsible for
-        return content.Substring(startIndex, endIndex - startIndex);
+        return content[startIndex..endIndex];
+    }
+
+    public static Dictionary<string, int> ProcessContent(string content)
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var token in Tokenize(content))
+        {
+            if (counts.TryGetValue(token, out var current))
+            {
+                counts[token] = current + 1;
+            }
+            else
+            {
+                counts[token] = 1;
+            }
+        }
+        return counts;
+    }
+
+    private static IEnumerable<string> Tokenize(string text)
+    {
+        var sb = new StringBuilder();
+
+        foreach (var ch in text)
+        {
+            if (char.IsLetterOrDigit(ch) || ch == '\'' || ch == '-')
+            {
+                sb.Append(char.ToLowerInvariant(ch));
+            }
+            else if (sb.Length > 0)
+            {
+                yield return sb.ToString();
+                sb.Clear();
+            }
+        }
+
+        if (sb.Length > 0)
+        {
+            yield return sb.ToString();
+        }
     }
 }

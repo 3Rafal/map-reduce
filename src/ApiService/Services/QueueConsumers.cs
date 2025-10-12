@@ -6,16 +6,13 @@ namespace ApiService.Services;
 public class MapResultConsumer : IConsumer<MapResultMessage>
 {
     private readonly JobCoordinator _jobCoordinator;
-    private readonly IQueuePublisher _queuePublisher;
     private readonly ILogger<MapResultConsumer> _logger;
 
     public MapResultConsumer(
         JobCoordinator jobCoordinator,
-        IQueuePublisher queuePublisher,
         ILogger<MapResultConsumer> logger)
     {
         _jobCoordinator = jobCoordinator;
-        _queuePublisher = queuePublisher;
         _logger = logger;
     }
 

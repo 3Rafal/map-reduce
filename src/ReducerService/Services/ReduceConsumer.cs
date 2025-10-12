@@ -1,9 +1,7 @@
 using MassTransit;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Minio;
 using Shared.Models;
-using Shared.Utils;
 using System.Text.Json;
 
 namespace ReducerService.Services;
