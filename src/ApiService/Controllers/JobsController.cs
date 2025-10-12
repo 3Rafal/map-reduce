@@ -58,10 +58,10 @@ public sealed class JobsController : ControllerBase
     }
 
     [HttpGet("{id:guid}/result")]
-    [ProducesResponseType(typeof(FileResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(FileStreamResult), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status409Conflict)]
-    public async Task<IActionResult> GetResultAsync(Guid id, CancellationToken cancellationToken)
+    public IActionResult GetResultAsync(Guid id, CancellationToken cancellationToken)
     {
         if (!_jobCoordinator.TryGetJob(id, out var job) || job is null)
         {
@@ -73,18 +73,44 @@ public sealed class JobsController : ControllerBase
             return Conflict(new ErrorResponse($"Job {id} has not completed yet."));
         }
 
-        var buffer = new MemoryStream();
-        var getArgs = new GetObjectArgs()
-            .WithBucket(job.BucketName)
-            .WithObject(job.ResultObjectKey)
-            .WithCallbackStream(stream => stream.CopyTo(buffer));
-
-        await _minioClient.GetObjectAsync(getArgs, cancellationToken);
-        buffer.Position = 0;
-        var payload = buffer.ToArray();
-
+        var pipe = new System.IO.Pipelines.Pipe();
         var fileName = $"job-{id:N}-result.json";
-        return File(payload, MediaTypeNames.Application.Json, fileName);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var getArgs = new GetObjectArgs()
+                    .WithBucket(job.BucketName)
+                    .WithObject(job.ResultObjectKey)
+                    .WithCallbackStream(async (stream, ct) =>
+                    {
+                        try
+                        {
+                            await stream.CopyToAsync(pipe.Writer.AsStream(), ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error streaming MinIO object for job {JobId}", id);
+                            await pipe.Writer.CompleteAsync(ex);
+                            throw;
+                        }
+                    });
+
+                await _minioClient.GetObjectAsync(getArgs);
+                await pipe.Writer.CompleteAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to stream result for job {JobId}", id);
+                await pipe.Writer.CompleteAsync(ex);
+            }
+        }, cancellationToken);
+
+        return new FileStreamResult(pipe.Reader.AsStream(), MediaTypeNames.Application.Json)
+        {
+            FileDownloadName = fileName
+        };
     }
 
     private static JobSummaryDto ToDto(Job job) => new()
