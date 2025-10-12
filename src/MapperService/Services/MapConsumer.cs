@@ -95,16 +95,20 @@ public class MapConsumer : IConsumer<MapJobMessage>
         var readLength = message.Offset - startReadOffset + message.Count + BoundaryOverlap;
 
         // Read the oversized chunk from MinIO
-        var buffer = new MemoryStream();
+        using var buffer = new MemoryStream();
         var getArgs = new GetObjectArgs()
             .WithBucket(message.InputBucketName)
             .WithObject(message.InputObjectKey)
             .WithOffsetAndLength(startReadOffset, readLength)
-            .WithCallbackStream(stream => stream.CopyToAsync(buffer, cancellationToken));
+            .WithCallbackStream(async (stream, ct) =>
+            {
+                await stream.CopyToAsync(buffer, ct);
+            });
 
         await _minioClient.GetObjectAsync(getArgs, cancellationToken);
         buffer.Position = 0;
-        var content = await new StreamReader(buffer).ReadToEndAsync(cancellationToken);
+        using var reader = new StreamReader(buffer);
+        var content = await reader.ReadToEndAsync(cancellationToken);
 
         if (string.IsNullOrEmpty(content))
         {
