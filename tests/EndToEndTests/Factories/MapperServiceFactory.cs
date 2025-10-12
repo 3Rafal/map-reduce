@@ -4,7 +4,6 @@ using EndToEndTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace EndToEndTests.Factories;
 
@@ -27,12 +26,12 @@ public sealed class MapperServiceFactory : WebApplicationFactory<MapperServiceAl
         {
             var overrides = new Dictionary<string, string?>
             {
-                ["Minio:Endpoint"] = _minio.Endpoint,
+                ["Minio:Endpoint"] = MinioFixture.Endpoint,
                 ["Minio:Port"] = _minio.Port.ToString(),
                 ["Minio:UseSsl"] = "false",
-                ["Minio:AccessKey"] = _minio.AccessKey,
-                ["Minio:SecretKey"] = _minio.SecretKey,
-                ["Minio:BucketName"] = _minio.BucketName,
+                ["Minio:AccessKey"] = MinioFixture.AccessKey,
+                ["Minio:SecretKey"] = MinioFixture.SecretKey,
+                ["Minio:BucketName"] = MinioFixture.BucketName,
                 ["RabbitMq:HostName"] = _rabbitMq.HostName,
                 ["RabbitMq:Port"] = _rabbitMq.Port.ToString(),
                 ["RabbitMq:UserName"] = _rabbitMq.UserName,
@@ -42,11 +41,6 @@ public sealed class MapperServiceFactory : WebApplicationFactory<MapperServiceAl
             };
 
             config.AddInMemoryCollection(overrides);
-        });
-
-        builder.ConfigureServices(services =>
-        {
-            // Remove callback HTTP client as we now use queues instead of HTTP callbacks
         });
     }
 }

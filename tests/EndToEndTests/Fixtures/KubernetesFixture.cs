@@ -1,7 +1,5 @@
 using System.Diagnostics;
-using System.IO;
 using System.Net;
-using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
 
@@ -31,12 +29,11 @@ public sealed class KubernetesFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        string currentContext;
         try
         {
-            await RunProcessAsync("kubectl", new[] { "version", "--client" }, throwOnError: true);
-            var contextResult = await RunProcessAsync("kubectl", new[] { "config", "current-context" }, throwOnError: true);
-            currentContext = contextResult.StandardOutput.Trim();
+            await RunProcessAsync("kubectl", ["version", "--client"], throwOnError: true);
+            var (_, StandardOutput, _) = await RunProcessAsync("kubectl", ["config", "current-context"], throwOnError: true);
+            var currentContext = StandardOutput.Trim();
             if (string.IsNullOrWhiteSpace(currentContext))
             {
                 throw new InvalidOperationException("kubectl current-context is empty.");
@@ -54,16 +51,16 @@ public sealed class KubernetesFixture : IAsyncLifetime
         _namespace = $"mapreduce-e2e-{Guid.NewGuid():N}";
         try
         {
-            await RunProcessAsync("kubectl", new[] { "create", "namespace", _namespace! }, throwOnError: true);
+            await RunProcessAsync("kubectl", ["create", "namespace", _namespace!], throwOnError: true);
 
             foreach (var manifest in GetManifestPaths())
             {
-                await RunProcessAsync("kubectl", new[] { "apply", "-n", _namespace!, "-f", manifest }, throwOnError: true);
+                await RunProcessAsync("kubectl", ["apply", "-n", _namespace!, "-f", manifest], throwOnError: true);
             }
 
             foreach (var deployment in new[] { "minio", "mapper-service", "reducer-service", "api-service" })
             {
-                await RunProcessAsync("kubectl", new[] { "wait", "--for=condition=available", "--timeout=180s", $"deploy/{deployment}", "-n", _namespace! }, throwOnError: true);
+                await RunProcessAsync("kubectl", ["wait", "--for=condition=available", "--timeout=180s", $"deploy/{deployment}", "-n", _namespace!], throwOnError: true);
             }
 
             ApiPort = GetFreeTcpPort();
@@ -95,34 +92,23 @@ public sealed class KubernetesFixture : IAsyncLifetime
         }
         catch
         {
-            // ignore
         }
 
-        if (!string.IsNullOrWhiteSpace(_namespace))
-        {
-            try
-            {
-                await RunProcessAsync("kubectl", new[] { "delete", "namespace", _namespace!, "--ignore-not-found" });
-                Console.WriteLine($"[KubernetesFixture] Deleted namespace {_namespace}");
-            }
-            catch
-            {
-                // ignore cleanup errors
-            }
-        }
+        await RunProcessAsync("kubectl", ["delete", "namespace", _namespace!, "--ignore-not-found"]);
+        Console.WriteLine($"[KubernetesFixture] Deleted namespace {_namespace}");
     }
 
-    private IEnumerable<string> GetManifestPaths()
+    private static IEnumerable<string> GetManifestPaths()
     {
         var root = Path.Combine(RepoRoot.Value, "deploy", "k8s");
-        return new[]
-        {
+        return
+        [
             Path.Combine(root, "minio.yaml"),
             Path.Combine(root, "mapper-service.yaml"),
             Path.Combine(root, "reducer-service.yaml"),
             Path.Combine(root, "api-service.yaml"),
             Path.Combine(root, "ingress.yaml")
-        };
+        ];
     }
 
     private async Task WaitForHealthAsync()
@@ -140,7 +126,6 @@ public sealed class KubernetesFixture : IAsyncLifetime
             }
             catch
             {
-                // ignore transient failures
             }
 
             attempts++;
@@ -150,17 +135,17 @@ public sealed class KubernetesFixture : IAsyncLifetime
         throw new TimeoutException("API service did not become healthy in time.");
     }
 
-    private async Task EnsureImagesAvailableAsync(string currentContext)
+    private static async Task EnsureImagesAvailableAsync(string currentContext)
     {
         if (!currentContext.StartsWith("kind", StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
-        var kindVersion = await RunProcessAsync("kind", new[] { "version" });
-        if (kindVersion.ExitCode != 0)
+        var (ExitCode, _, StandardError) = await RunProcessAsync("kind", ["version"]);
+        if (ExitCode != 0)
         {
-            throw new InvalidOperationException($"kind CLI not available: {kindVersion.StandardError}");
+            throw new InvalidOperationException($"kind CLI not available: {StandardError}");
         }
 
         foreach (var image in new[] { ApiImage, MapperImage, ReducerImage })
@@ -170,7 +155,7 @@ public sealed class KubernetesFixture : IAsyncLifetime
                 await BuildImageAsync(image);
             }
 
-            var loadResult = await RunProcessAsync("kind", new[] { "load", "docker-image", image });
+            var loadResult = await RunProcessAsync("kind", ["load", "docker-image", image]);
             if (loadResult.ExitCode != 0)
             {
                 throw new InvalidOperationException($"kind load docker-image {image} failed:{Environment.NewLine}{loadResult.StandardError}");
@@ -180,23 +165,24 @@ public sealed class KubernetesFixture : IAsyncLifetime
 
     private static async Task<bool> ImageExistsAsync(string tag)
     {
-        var result = await RunProcessAsync("docker", new[] { "inspect", "--type=image", tag });
+        var result = await RunProcessAsync("docker", ["inspect", "--type=image", tag]);
         return result.ExitCode == 0;
     }
 
     private static async Task BuildImageAsync(string tag)
     {
+        static string DockerPath(string service) => Path.Combine("src", service, "Dockerfile");
         var dockerfile = tag switch
         {
-            ApiImage => Path.Combine("src", "ApiService", "Dockerfile"),
-            MapperImage => Path.Combine("src", "MapperService", "Dockerfile"),
-            ReducerImage => Path.Combine("src", "ReducerService", "Dockerfile"),
+            ApiImage => DockerPath("ApiService"),
+            MapperImage => DockerPath("MapperService"),
+            ReducerImage => DockerPath("ReducerService"),
             _ => throw new InvalidOperationException($"Unknown image tag {tag}")
         };
 
         await RunProcessAsync(
             "docker",
-            new[] { "build", "-t", tag, "-f", dockerfile, RepoRoot.Value },
+            ["build", "-t", tag, "-f", dockerfile, RepoRoot.Value],
             throwOnError: true);
     }
 

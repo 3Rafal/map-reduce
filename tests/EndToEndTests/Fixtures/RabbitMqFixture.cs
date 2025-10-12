@@ -1,11 +1,6 @@
-using System;
-using System.Diagnostics;
-using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using Xunit;
 
 namespace EndToEndTests.Fixtures;
 
@@ -36,7 +31,7 @@ public sealed class RabbitMqFixture : IAsyncLifetime
     {
         try
         {
-            await RunDockerCommandAsync($"pull {Image}");
+            await DockerHelper.RunCommandAsync($"pull {Image}");
 
             var containerName = $"rabbitmq-e2e-{Guid.NewGuid():N}";
             var runArgs = string.Join(' ', new[]
@@ -51,7 +46,7 @@ public sealed class RabbitMqFixture : IAsyncLifetime
                 Image
             });
 
-            _containerId = await RunDockerCommandAsync(runArgs);
+            _containerId = await DockerHelper.RunCommandAsync(runArgs);
             Port = await GetPublishedPortAsync(_containerId!, BrokerPort);
             var managementHttpPort = await GetPublishedPortAsync(_containerId!, ManagementPort);
 
@@ -74,7 +69,7 @@ public sealed class RabbitMqFixture : IAsyncLifetime
         {
             if (!string.IsNullOrEmpty(_containerId))
             {
-                await RunDockerCommandAsync($"stop {_containerId}", throwOnError: false);
+                await DockerHelper.RunCommandAsync($"stop {_containerId}", throwOnError: false);
             }
         }
         catch
@@ -114,34 +109,11 @@ public sealed class RabbitMqFixture : IAsyncLifetime
         throw new TimeoutException("RabbitMQ did not become ready in time.");
     }
 
-    private static async Task<string> RunDockerCommandAsync(string arguments, bool throwOnError = true)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "docker",
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
 
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start docker process.");
-        var stdout = await process.StandardOutput.ReadToEndAsync();
-        var stderr = await process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-
-        if (process.ExitCode != 0 && throwOnError)
-        {
-            throw new InvalidOperationException($"Docker command failed: docker {arguments}{Environment.NewLine}STDOUT: {stdout}{Environment.NewLine}STDERR: {stderr}");
-        }
-
-        return stdout.Trim();
-    }
 
     private static async Task<int> GetPublishedPortAsync(string containerId, int containerPort)
     {
-        var output = await RunDockerCommandAsync($"port {containerId} {containerPort}/tcp");
+        var output = await DockerHelper.RunCommandAsync($"port {containerId} {containerPort}/tcp");
         var match = Regex.Match(output, @":(?<port>\d+)$");
         if (!match.Success)
         {

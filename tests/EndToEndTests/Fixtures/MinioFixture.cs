@@ -1,10 +1,4 @@
-using System;
-using System.Diagnostics;
-using System.IO;
-using System.Net.Http;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using Xunit;
 
 namespace EndToEndTests.Fixtures;
 
@@ -17,19 +11,19 @@ public sealed class MinioFixture : IAsyncLifetime
     private readonly HttpClient _httpClient = new();
     private string? _containerId;
 
-    public string Endpoint => "localhost";
+    public static string Endpoint => "localhost";
 
     public int Port { get; private set; }
 
-    public string AccessKey => "minioadmin";
+    public static string AccessKey => "minioadmin";
 
-    public string SecretKey => "minioadmin";
+    public static string SecretKey => "minioadmin";
 
-    public string BucketName => "mapreduce";
+    public static string BucketName => "mapreduce";
 
     public async Task InitializeAsync()
     {
-        await RunDockerCommandAsync($"pull {Image}");
+        await DockerHelper.RunCommandAsync($"pull {Image}");
 
         var containerName = $"mapreduce-minio-{Guid.NewGuid():N}";
         var runArgs = string.Join(' ', new[]
@@ -45,7 +39,7 @@ public sealed class MinioFixture : IAsyncLifetime
             $"--console-address :{ConsolePort}"
         });
 
-        _containerId = await RunDockerCommandAsync(runArgs);
+        _containerId = await DockerHelper.RunCommandAsync(runArgs);
         Port = await GetPublishedPortAsync(_containerId!, MinioPort);
         await WaitForReadyAsync();
     }
@@ -54,40 +48,15 @@ public sealed class MinioFixture : IAsyncLifetime
     {
         if (!string.IsNullOrEmpty(_containerId))
         {
-            await RunDockerCommandAsync($"stop {_containerId}");
+            await DockerHelper.RunCommandAsync($"stop {_containerId}");
         }
 
         _httpClient.Dispose();
     }
 
-    private static async Task<string> RunDockerCommandAsync(string arguments)
-    {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = "docker",
-            Arguments = arguments,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start docker process.");
-        var stdout = await process.StandardOutput.ReadToEndAsync();
-        var stderr = await process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync();
-
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"Docker command failed: docker {arguments}\nSTDOUT: {stdout}\nSTDERR: {stderr}");
-        }
-
-        return stdout.Trim();
-    }
-
     private static async Task<int> GetPublishedPortAsync(string containerId, int containerPort)
     {
-        var output = await RunDockerCommandAsync($"port {containerId} {containerPort}/tcp");
+        var output = await DockerHelper.RunCommandAsync($"port {containerId} {containerPort}/tcp");
         var match = Regex.Match(output, @":(?<port>\d+)$");
         if (!match.Success)
         {
@@ -114,7 +83,6 @@ public sealed class MinioFixture : IAsyncLifetime
             }
             catch
             {
-                // ignore and retry
             }
 
             attempts++;

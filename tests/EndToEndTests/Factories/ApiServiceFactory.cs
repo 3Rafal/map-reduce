@@ -6,7 +6,6 @@ using EndToEndTests.Fixtures;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace EndToEndTests.Factories;
 
@@ -37,12 +36,12 @@ public sealed class ApiServiceFactory : WebApplicationFactory<ApiServiceAlias::P
         {
             var overrides = new Dictionary<string, string?>
             {
-                ["Minio:Endpoint"] = _minio.Endpoint,
+                ["Minio:Endpoint"] = MinioFixture.Endpoint,
                 ["Minio:Port"] = _minio.Port.ToString(),
                 ["Minio:UseSsl"] = "false",
-                ["Minio:AccessKey"] = _minio.AccessKey,
-                ["Minio:SecretKey"] = _minio.SecretKey,
-                ["Minio:BucketName"] = _minio.BucketName,
+                ["Minio:AccessKey"] = MinioFixture.AccessKey,
+                ["Minio:SecretKey"] = MinioFixture.SecretKey,
+                ["Minio:BucketName"] = MinioFixture.BucketName,
                 ["Coordinator:MapperBaseUrl"] = MapperServerBaseAddress.ToString(),
                 ["Coordinator:ReducerBaseUrl"] = ReducerServerBaseAddress.ToString(),
                 ["Coordinator:CallbackBaseUrl"] = "http://localhost/",
@@ -55,11 +54,6 @@ public sealed class ApiServiceFactory : WebApplicationFactory<ApiServiceAlias::P
             };
 
             config.AddInMemoryCollection(overrides);
-        });
-
-        builder.ConfigureServices(services =>
-        {
-            // Remove HTTP clients as we now use queues instead of direct HTTP calls
         });
     }
 }
